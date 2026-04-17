@@ -125,7 +125,13 @@ function Normalize-PathEntry {
     }
 
     $trimmed = $Entry.Trim()
-    if ($trimmed.Length -gt 3 -and $trimmed.EndsWith("\")) {
+    if ($trimmed.EndsWith("\")) {
+        if ($trimmed -match '^[A-Za-z]:\\$') {
+            return $trimmed
+        }
+        if ($trimmed -match '^\\\\[^\\]+\\[^\\]+\\$') {
+            return $trimmed
+        }
         return $trimmed.Substring(0, $trimmed.Length - 1)
     }
 
@@ -207,7 +213,8 @@ function Install-NodeJS {
         $env:Path = "$machinePath;$userPath"
     }
     catch {
-        Log-Error "Failed to install Node.js $NODE_TARGET_VERSION via nvm command: $nvmCommand"
+        Log-Error "Failed to install Node.js $NODE_TARGET_VERSION via nvm."
+        Log-Error "Resolved nvm command path: $nvmCommand"
         Log-Error $_.Exception.Message
         exit 1
     }
