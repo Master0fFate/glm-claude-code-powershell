@@ -22,6 +22,21 @@ function Get-TempDirectory {
     throw "Unable to resolve a writable temp directory."
 }
 
+function Invoke-WebRequestCompat {
+    param(
+        [Parameter(Mandatory = $true)][string]$Uri,
+        [Parameter(Mandatory = $true)][string]$OutFile
+    )
+
+    $cmd = Get-Command Invoke-WebRequest -ErrorAction Stop
+    if ($cmd.Parameters.ContainsKey("UseBasicParsing")) {
+        Invoke-WebRequest -Uri $Uri -OutFile $OutFile -UseBasicParsing
+        return
+    }
+
+    Invoke-WebRequest -Uri $Uri -OutFile $OutFile
+}
+
 function Get-ScriptRoot {
     if (-not [string]::IsNullOrWhiteSpace($PSScriptRoot)) {
         return $PSScriptRoot
@@ -52,7 +67,7 @@ function Invoke-LocalOrRemotePs1 {
     }
 
     $tempFile = Join-Path (Get-TempDirectory) "glm-claudecode.ps1"
-    Invoke-WebRequest -Uri "$RawBase/glm-claudecode.ps1" -OutFile $tempFile
+    Invoke-WebRequestCompat -Uri "$RawBase/glm-claudecode.ps1" -OutFile $tempFile
     & $tempFile -ApiKey $InlineApiKey
 }
 
@@ -83,7 +98,7 @@ function Invoke-LocalOrRemoteSh {
             $env:ZAI_API_KEY = $InlineApiKey
         }
 
-        Invoke-WebRequest -Uri "$RawBase/glm-claudecode.sh" -OutFile $tempSh
+        Invoke-WebRequestCompat -Uri "$RawBase/glm-claudecode.sh" -OutFile $tempSh
         & bash $tempSh
     }
     finally {

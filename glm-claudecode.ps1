@@ -67,6 +67,21 @@ function Get-TempDirectory {
     exit 1
 }
 
+function Invoke-WebRequestCompat {
+    param(
+        [Parameter(Mandatory = $true)][string]$Uri,
+        [Parameter(Mandatory = $true)][string]$OutFile
+    )
+
+    $cmd = Get-Command Invoke-WebRequest -ErrorAction Stop
+    if ($cmd.Parameters.ContainsKey("UseBasicParsing")) {
+        Invoke-WebRequest -Uri $Uri -OutFile $OutFile -UseBasicParsing
+        return
+    }
+
+    Invoke-WebRequest -Uri $Uri -OutFile $OutFile
+}
+
 # ========================
 #     Node.js Installation
 # ========================
@@ -80,7 +95,7 @@ function Install-NodeJS {
     $nvmInstaller = Join-Path (Get-TempDirectory) "nvm-setup.exe"
 
     try {
-        Invoke-WebRequest -Uri $nvmUrl -OutFile $nvmInstaller
+        Invoke-WebRequestCompat -Uri $nvmUrl -OutFile $nvmInstaller
         Start-Process -FilePath $nvmInstaller -Args "/SILENT" -Wait
         Remove-Item $nvmInstaller -Force
     }
