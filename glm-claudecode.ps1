@@ -117,6 +117,32 @@ function Resolve-NvmCommand {
     return $null
 }
 
+function Add-PathEntryIfMissing {
+    param([string]$Entry)
+
+    if ([string]::IsNullOrWhiteSpace($Entry)) {
+        return
+    }
+
+    $normalizedEntry = $Entry.Trim().TrimEnd('\')
+    $alreadyPresent = $false
+
+    foreach ($currentEntry in ($env:Path -split ';')) {
+        if ([string]::IsNullOrWhiteSpace($currentEntry)) {
+            continue
+        }
+
+        if ($currentEntry.Trim().TrimEnd('\') -ieq $normalizedEntry) {
+            $alreadyPresent = $true
+            break
+        }
+    }
+
+    if (-not $alreadyPresent) {
+        $env:Path = "$Entry;$env:Path"
+    }
+}
+
 # ========================
 #     Node.js Installation
 # ========================
@@ -147,12 +173,8 @@ function Install-NodeJS {
 
     $nvmHomeUser = [System.Environment]::GetEnvironmentVariable("NVM_HOME", "User")
     $nvmSymlinkUser = [System.Environment]::GetEnvironmentVariable("NVM_SYMLINK", "User")
-    if (-not [string]::IsNullOrWhiteSpace($nvmHomeUser) -and -not (($env:Path -split ';') -contains $nvmHomeUser)) {
-        $env:Path = "$nvmHomeUser;$env:Path"
-    }
-    if (-not [string]::IsNullOrWhiteSpace($nvmSymlinkUser) -and -not (($env:Path -split ';') -contains $nvmSymlinkUser)) {
-        $env:Path = "$nvmSymlinkUser;$env:Path"
-    }
+    Add-PathEntryIfMissing -Entry $nvmHomeUser
+    Add-PathEntryIfMissing -Entry $nvmSymlinkUser
 
     $nvmCommand = Resolve-NvmCommand
     if (-not $nvmCommand) {
