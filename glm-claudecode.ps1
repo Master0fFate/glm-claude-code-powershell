@@ -117,29 +117,39 @@ function Resolve-NvmCommand {
     return $null
 }
 
-function Add-PathEntryIfMissing {
+function Normalize-PathEntry {
     param([string]$Entry)
 
     if ([string]::IsNullOrWhiteSpace($Entry)) {
-        return
+        return ""
     }
 
-    $normalizedEntry = $Entry.Trim().TrimEnd('\')
+    return $Entry.Trim().TrimEnd('\')
+}
+
+function Add-PathEntryIfMissing {
+    param([string]$Entry)
+
+    $normalizedEntry = Normalize-PathEntry -Entry $Entry
+    if ([string]::IsNullOrWhiteSpace($normalizedEntry)) {
+        return
+    }
     $alreadyPresent = $false
 
     foreach ($currentEntry in ($env:Path -split ';')) {
-        if ([string]::IsNullOrWhiteSpace($currentEntry)) {
+        $normalizedCurrentEntry = Normalize-PathEntry -Entry $currentEntry
+        if ([string]::IsNullOrWhiteSpace($normalizedCurrentEntry)) {
             continue
         }
 
-        if ($currentEntry.Trim().TrimEnd('\') -ieq $normalizedEntry) {
+        if ($normalizedCurrentEntry -ieq $normalizedEntry) {
             $alreadyPresent = $true
             break
         }
     }
 
     if (-not $alreadyPresent) {
-        $env:Path = "$Entry;$env:Path"
+        $env:Path = "$normalizedEntry;$env:Path"
     }
 }
 
