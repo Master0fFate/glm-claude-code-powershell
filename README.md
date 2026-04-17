@@ -13,10 +13,12 @@ irm https://raw.githubusercontent.com/Master0fFate/glm-claude-code-powershell/ma
 Pass API key non-interactively:
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -Command "& { irm https://raw.githubusercontent.com/Master0fFate/glm-claude-code-powershell/main/glm-claudecode-bootstrap.ps1 | iex } -ApiKey 'YOUR_ZAI_API_KEY'"
+$bootstrap = Join-Path ([System.IO.Path]::GetTempPath()) "glm-claudecode-bootstrap.ps1"
+Invoke-WebRequest -Uri "https://raw.githubusercontent.com/Master0fFate/glm-claude-code-powershell/main/glm-claudecode-bootstrap.ps1" -OutFile $bootstrap
+& $bootstrap -ApiKey "YOUR_ZAI_API_KEY"
 ```
 
-### Windows CMD (`curl`)
+### Windows CMD (`curl`, run in `cmd.exe`)
 
 ```cmd
 curl -fsSL -o "%TEMP%\glm-claudecode-bootstrap.ps1" "https://raw.githubusercontent.com/Master0fFate/glm-claude-code-powershell/main/glm-claudecode-bootstrap.ps1" && powershell -NoProfile -ExecutionPolicy Bypass -File "%TEMP%\glm-claudecode-bootstrap.ps1"

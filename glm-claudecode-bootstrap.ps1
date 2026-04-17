@@ -4,19 +4,70 @@ param(
 
 $ErrorActionPreference = "Stop"
 $RawBase = "https://raw.githubusercontent.com/Master0fFate/glm-claude-code-powershell/main"
-$ScriptRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
+
+function Get-TempDirectory {
+    $candidates = @(
+        [System.IO.Path]::GetTempPath(),
+        $env:TEMP,
+        $env:TMP,
+        $env:TMPDIR
+    )
+
+    foreach ($candidate in $candidates) {
+        if (-not [string]::IsNullOrWhiteSpace($candidate)) {
+            return $candidate
+        }
+    }
+
+    throw "Unable to resolve a writable temp directory."
+}
+
+function Invoke-WebRequestCompat {
+    param(
+        [Parameter(Mandatory = $true)][string]$Uri,
+        [Parameter(Mandatory = $true)][string]$OutFile
+    )
+
+    $cmd = Get-Command Invoke-WebRequest -ErrorAction Stop
+    if ($cmd.Parameters.ContainsKey("UseBasicParsing")) {
+        Invoke-WebRequest -Uri $Uri -OutFile $OutFile -UseBasicParsing
+        return
+    }
+
+    Invoke-WebRequest -Uri $Uri -OutFile $OutFile
+}
+
+function Get-ScriptRoot {
+    if (-not [string]::IsNullOrWhiteSpace($PSScriptRoot)) {
+        return $PSScriptRoot
+    }
+
+    if (-not [string]::IsNullOrWhiteSpace($PSCommandPath)) {
+        return (Split-Path -Parent $PSCommandPath)
+    }
+
+    if (-not [string]::IsNullOrWhiteSpace($MyInvocation.MyCommand.Path)) {
+        return (Split-Path -Parent $MyInvocation.MyCommand.Path)
+    }
+
+    return $null
+}
+
+$ScriptRoot = Get-ScriptRoot
 
 function Invoke-LocalOrRemotePs1 {
     param([string]$InlineApiKey)
 
-    $localScript = Join-Path $ScriptRoot "glm-claudecode.ps1"
-    if (Test-Path $localScript) {
-        & $localScript -ApiKey $InlineApiKey
-        return
+    if (-not [string]::IsNullOrWhiteSpace($ScriptRoot)) {
+        $localScript = Join-Path $ScriptRoot "glm-claudecode.ps1"
+        if (Test-Path $localScript) {
+            & $localScript -ApiKey $InlineApiKey
+            return
+        }
     }
 
-    $tempFile = Join-Path $env:TEMP "glm-claudecode.ps1"
-    Invoke-WebRequest -Uri "$RawBase/glm-claudecode.ps1" -OutFile $tempFile -UseBasicParsing
+    $tempFile = Join-Path (Get-TempDirectory) "glm-claudecode.ps1"
+    Invoke-WebRequestCompat -Uri "$RawBase/glm-claudecode.ps1" -OutFile $tempFile
     & $tempFile -ApiKey $InlineApiKey
 }
 
@@ -27,25 +78,27 @@ function Invoke-LocalOrRemoteSh {
         throw "bash is required to run Linux/macOS bootstrap path."
     }
 
-    $localScript = Join-Path $ScriptRoot "glm-claudecode.sh"
-    if (Test-Path $localScript) {
-        if ([string]::IsNullOrWhiteSpace($InlineApiKey)) {
-            & bash $localScript
+    if (-not [string]::IsNullOrWhiteSpace($ScriptRoot)) {
+        $localScript = Join-Path $ScriptRoot "glm-claudecode.sh"
+        if (Test-Path $localScript) {
+            if ([string]::IsNullOrWhiteSpace($InlineApiKey)) {
+                & bash $localScript
+            }
+            else {
+                & bash $localScript --api-key $InlineApiKey
+            }
+            return
         }
-        else {
-            & bash $localScript --api-key $InlineApiKey
-        }
-        return
     }
 
     $previousApiKey = $env:ZAI_API_KEY
-    $tempSh = Join-Path ([System.IO.Path]::GetTempPath()) "glm-claudecode.sh"
+    $tempSh = Join-Path (Get-TempDirectory) "glm-claudecode.sh"
     try {
         if (-not [string]::IsNullOrWhiteSpace($InlineApiKey)) {
             $env:ZAI_API_KEY = $InlineApiKey
         }
 
-        Invoke-WebRequest -Uri "$RawBase/glm-claudecode.sh" -OutFile $tempSh -UseBasicParsing
+        Invoke-WebRequestCompat -Uri "$RawBase/glm-claudecode.sh" -OutFile $tempSh
         & bash $tempSh
     }
     finally {

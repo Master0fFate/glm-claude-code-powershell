@@ -49,6 +49,39 @@ function Ensure-DirExists {
     }
 }
 
+function Get-TempDirectory {
+    $candidates = @(
+        [System.IO.Path]::GetTempPath(),
+        $env:TEMP,
+        $env:TMP,
+        $env:TMPDIR
+    )
+
+    foreach ($candidate in $candidates) {
+        if (-not [string]::IsNullOrWhiteSpace($candidate)) {
+            return $candidate
+        }
+    }
+
+    Log-Error "Unable to resolve a writable temp directory."
+    exit 1
+}
+
+function Invoke-WebRequestCompat {
+    param(
+        [Parameter(Mandatory = $true)][string]$Uri,
+        [Parameter(Mandatory = $true)][string]$OutFile
+    )
+
+    $cmd = Get-Command Invoke-WebRequest -ErrorAction Stop
+    if ($cmd.Parameters.ContainsKey("UseBasicParsing")) {
+        Invoke-WebRequest -Uri $Uri -OutFile $OutFile -UseBasicParsing
+        return
+    }
+
+    Invoke-WebRequest -Uri $Uri -OutFile $OutFile
+}
+
 # ========================
 #     Node.js Installation
 # ========================
@@ -59,10 +92,10 @@ function Install-NodeJS {
     Log-Info "Installing nvm-windows ($NVM_WINDOWS_VERSION)..."
 
     $nvmUrl = "https://github.com/coreybutler/nvm-windows/releases/download/$NVM_WINDOWS_VERSION/nvm-setup.exe"
-    $nvmInstaller = Join-Path $env:TEMP "nvm-setup.exe"
+    $nvmInstaller = Join-Path (Get-TempDirectory) "nvm-setup.exe"
 
     try {
-        Invoke-WebRequest -Uri $nvmUrl -OutFile $nvmInstaller -UseBasicParsing
+        Invoke-WebRequestCompat -Uri $nvmUrl -OutFile $nvmInstaller
         Start-Process -FilePath $nvmInstaller -Args "/SILENT" -Wait
         Remove-Item $nvmInstaller -Force
     }
