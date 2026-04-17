@@ -50,6 +50,7 @@ curl -fsSL https://raw.githubusercontent.com/Master0fFate/glm-claude-code-powers
 ## What the scripts do
 
 - Enforce Node.js **v22+ (LTS baseline)**.
+- Automatically retries Node.js downloads with a mirror if `nodejs.org` is unreachable.
 - Install `@anthropic-ai/claude-code` globally via npm.
 - Require Z.AI API key input (`--api-key`, `-ApiKey`, or prompt).
 - Write `.claude/settings.json` with:

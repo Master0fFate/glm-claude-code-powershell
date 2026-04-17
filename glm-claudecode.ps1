@@ -11,6 +11,8 @@ $ErrorActionPreference = "Stop"
 $SCRIPT_NAME = $MyInvocation.MyCommand.Name
 $NODE_TARGET_VERSION = 22
 $NVM_WINDOWS_VERSION = "1.1.12"
+$NVM_NODE_MIRROR_FALLBACK = "https://npmmirror.com/mirrors/node/"
+$NVM_NPM_MIRROR_FALLBACK = "https://npmmirror.com/mirrors/npm/"
 $CLAUDE_PACKAGE = "@anthropic-ai/claude-code"
 $CONFIG_DIR = Join-Path $env:USERPROFILE ".claude"
 $API_BASE_URL = "https://api.z.ai/api/anthropic"
@@ -232,6 +234,19 @@ function Initialize-NvmEnvironment {
     }
 }
 
+function Invoke-NvmCommand {
+    param(
+        [Parameter(Mandatory = $true)][string]$NvmCommand,
+        [Parameter(Mandatory = $true)][string[]]$Arguments,
+        [Parameter(Mandatory = $true)][string]$FailureMessage
+    )
+
+    & $NvmCommand @Arguments
+    if ($LASTEXITCODE -ne 0) {
+        throw "$FailureMessage (exit code: $LASTEXITCODE)"
+    }
+}
+
 # ========================
 #     Node.js Installation
 # ========================
@@ -274,21 +289,38 @@ function Install-NodeJS {
     Initialize-NvmEnvironment -NvmCommandPath $nvmCommand
 
     Log-Info "Installing Node.js $NODE_TARGET_VERSION..."
-    try {
-        & $nvmCommand install $NODE_TARGET_VERSION
-        & $nvmCommand use $NODE_TARGET_VERSION
+    $primaryInstallError = $null
 
-        $machinePath = [System.Environment]::GetEnvironmentVariable("Path", "Machine")
-        $userPath = [System.Environment]::GetEnvironmentVariable("Path", "User")
-        $env:Path = "$machinePath;$userPath"
-        Initialize-NvmEnvironment -NvmCommandPath $nvmCommand
+    try {
+        Invoke-NvmCommand -NvmCommand $nvmCommand -Arguments @("install", "$NODE_TARGET_VERSION") -FailureMessage "nvm install $NODE_TARGET_VERSION failed"
+        Invoke-NvmCommand -NvmCommand $nvmCommand -Arguments @("use", "$NODE_TARGET_VERSION") -FailureMessage "nvm use $NODE_TARGET_VERSION failed"
     }
     catch {
-        Log-Error "Failed to install Node.js $NODE_TARGET_VERSION via nvm."
-        Log-Error "Resolved nvm command path: $nvmCommand"
-        Log-Error $_.Exception.Message
-        exit 1
+        $primaryInstallError = $_
     }
+
+    if ($null -ne $primaryInstallError) {
+        Log-Info "Primary Node.js source failed. Retrying with mirror..."
+        try {
+            Invoke-NvmCommand -NvmCommand $nvmCommand -Arguments @("node_mirror", "$NVM_NODE_MIRROR_FALLBACK") -FailureMessage "Failed to configure nvm node mirror"
+            Invoke-NvmCommand -NvmCommand $nvmCommand -Arguments @("npm_mirror", "$NVM_NPM_MIRROR_FALLBACK") -FailureMessage "Failed to configure nvm npm mirror"
+            Invoke-NvmCommand -NvmCommand $nvmCommand -Arguments @("install", "$NODE_TARGET_VERSION") -FailureMessage "nvm install $NODE_TARGET_VERSION failed with fallback mirror"
+            Invoke-NvmCommand -NvmCommand $nvmCommand -Arguments @("use", "$NODE_TARGET_VERSION") -FailureMessage "nvm use $NODE_TARGET_VERSION failed with fallback mirror"
+            Log-Success "Node.js installed successfully via fallback mirror."
+        }
+        catch {
+            Log-Error "Failed to install Node.js $NODE_TARGET_VERSION via nvm."
+            Log-Error "Resolved nvm command path: $nvmCommand"
+            Log-Error "Primary attempt error: $($primaryInstallError.Exception.Message)"
+            Log-Error "Fallback attempt error: $($_.Exception.Message)"
+            exit 1
+        }
+    }
+
+    $machinePath = [System.Environment]::GetEnvironmentVariable("Path", "Machine")
+    $userPath = [System.Environment]::GetEnvironmentVariable("Path", "User")
+    $env:Path = "$machinePath;$userPath"
+    Initialize-NvmEnvironment -NvmCommandPath $nvmCommand
 
     Start-Sleep -Seconds 2
     try {

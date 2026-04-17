@@ -5,6 +5,8 @@ set -euo pipefail
 SCRIPT_NAME="$(basename "$0")"
 NODE_TARGET_VERSION=22
 NVM_INSTALL_VERSION="v0.40.3"
+NVM_NODE_MIRROR_FALLBACK="https://npmmirror.com/mirrors/node"
+NVM_NPM_MIRROR_FALLBACK="https://npmmirror.com/mirrors/npm"
 CLAUDE_PACKAGE="@anthropic-ai/claude-code"
 API_BASE_URL="https://api.z.ai/api/anthropic"
 API_KEY_URL="https://z.ai/manage-apikey/apikey-list"
@@ -124,7 +126,25 @@ load_nvm() {
 install_nodejs() {
   log_info "Installing Node.js ${NODE_TARGET_VERSION} via nvm..."
   load_nvm
-  nvm install "$NODE_TARGET_VERSION"
+
+  local install_failed=0
+  if ! nvm install "$NODE_TARGET_VERSION"; then
+    install_failed=1
+  fi
+
+  if (( install_failed )); then
+    log_info "Primary Node.js source failed. Retrying with mirror..."
+    export NVM_NODEJS_ORG_MIRROR="$NVM_NODE_MIRROR_FALLBACK"
+    export NVM_NPM_MIRROR="$NVM_NPM_MIRROR_FALLBACK"
+
+    if ! nvm install "$NODE_TARGET_VERSION"; then
+      log_error "Failed to install Node.js ${NODE_TARGET_VERSION} via nvm (primary and fallback mirror)."
+      exit 1
+    fi
+
+    log_success "Node.js installed successfully via fallback mirror."
+  fi
+
   nvm alias default "$NODE_TARGET_VERSION"
   nvm use "$NODE_TARGET_VERSION"
 
