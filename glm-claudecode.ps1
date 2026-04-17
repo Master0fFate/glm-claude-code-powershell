@@ -82,6 +82,41 @@ function Invoke-WebRequestCompat {
     Invoke-WebRequest -Uri $Uri -OutFile $OutFile
 }
 
+function Resolve-NvmCommand {
+    $command = Get-Command nvm -ErrorAction SilentlyContinue
+    if ($command) {
+        return $command.Source
+    }
+
+    $candidatePaths = @()
+
+    foreach ($nvmHome in @(
+        $env:NVM_HOME,
+        [System.Environment]::GetEnvironmentVariable("NVM_HOME", "User"),
+        [System.Environment]::GetEnvironmentVariable("NVM_HOME", "Machine")
+    )) {
+        if (-not [string]::IsNullOrWhiteSpace($nvmHome)) {
+            $candidatePaths += (Join-Path $nvmHome "nvm.exe")
+        }
+    }
+
+    if (-not [string]::IsNullOrWhiteSpace($env:ProgramFiles)) {
+        $candidatePaths += (Join-Path (Join-Path $env:ProgramFiles "nvm") "nvm.exe")
+    }
+
+    if (-not [string]::IsNullOrWhiteSpace($env:LOCALAPPDATA)) {
+        $candidatePaths += (Join-Path (Join-Path $env:LOCALAPPDATA "nvm") "nvm.exe")
+    }
+
+    foreach ($path in $candidatePaths) {
+        if (Test-Path $path) {
+            return $path
+        }
+    }
+
+    return $null
+}
+
 # ========================
 #     Node.js Installation
 # ========================
@@ -104,19 +139,39 @@ function Install-NodeJS {
         exit 1
     }
 
-    $env:Path = [System.Environment]::GetEnvironmentVariable("Path", "Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path", "User")
+    $machinePath = [System.Environment]::GetEnvironmentVariable("Path", "Machine")
+    $userPath = [System.Environment]::GetEnvironmentVariable("Path", "User")
+    $env:Path = "$machinePath;$userPath"
 
     Start-Sleep -Seconds 3
 
+    $nvmHomeUser = [System.Environment]::GetEnvironmentVariable("NVM_HOME", "User")
+    $nvmSymlinkUser = [System.Environment]::GetEnvironmentVariable("NVM_SYMLINK", "User")
+    if (-not [string]::IsNullOrWhiteSpace($nvmHomeUser) -and -not (($env:Path -split ';') -contains $nvmHomeUser)) {
+        $env:Path = "$nvmHomeUser;$env:Path"
+    }
+    if (-not [string]::IsNullOrWhiteSpace($nvmSymlinkUser) -and -not (($env:Path -split ';') -contains $nvmSymlinkUser)) {
+        $env:Path = "$nvmSymlinkUser;$env:Path"
+    }
+
+    $nvmCommand = Resolve-NvmCommand
+    if (-not $nvmCommand) {
+        Log-Error "nvm-windows was installed but nvm.exe was not found on PATH or standard install locations."
+        exit 1
+    }
+
     Log-Info "Installing Node.js $NODE_TARGET_VERSION..."
     try {
-        & nvm install $NODE_TARGET_VERSION
-        & nvm use $NODE_TARGET_VERSION
+        & $nvmCommand install $NODE_TARGET_VERSION
+        & $nvmCommand use $NODE_TARGET_VERSION
 
-        $env:Path = [System.Environment]::GetEnvironmentVariable("Path", "Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path", "User")
+        $machinePath = [System.Environment]::GetEnvironmentVariable("Path", "Machine")
+        $userPath = [System.Environment]::GetEnvironmentVariable("Path", "User")
+        $env:Path = "$machinePath;$userPath"
     }
     catch {
         Log-Error "Failed to install Node.js via nvm"
+        Log-Error $_.Exception.Message
         exit 1
     }
 
