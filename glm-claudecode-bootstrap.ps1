@@ -39,14 +39,17 @@ function Invoke-LocalOrRemoteSh {
     }
 
     $previousApiKey = $env:ZAI_API_KEY
+    $tempSh = Join-Path ([System.IO.Path]::GetTempPath()) "glm-claudecode.sh"
     try {
         if (-not [string]::IsNullOrWhiteSpace($InlineApiKey)) {
             $env:ZAI_API_KEY = $InlineApiKey
         }
 
-        & bash -lc "curl -fsSL $RawBase/glm-claudecode.sh | bash"
+        Invoke-WebRequest -Uri "$RawBase/glm-claudecode.sh" -OutFile $tempSh -UseBasicParsing
+        & bash $tempSh
     }
     finally {
+        Remove-Item $tempSh -ErrorAction SilentlyContinue
         if ($null -eq $previousApiKey) {
             Remove-Item Env:ZAI_API_KEY -ErrorAction SilentlyContinue
         }

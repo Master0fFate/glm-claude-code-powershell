@@ -307,7 +307,18 @@ console.log('Configuration written successfully');
 # ========================
 
 function Main {
-    if (-not $IsWindows) {
+    $isWindowsPlatform = $false
+    if (Get-Variable -Name IsWindows -ErrorAction SilentlyContinue) {
+        $isWindowsPlatform = [bool]$IsWindows
+    }
+    elseif ($PSVersionTable.PSEdition -eq "Desktop") {
+        $isWindowsPlatform = $true
+    }
+    elseif ($env:OS -eq "Windows_NT") {
+        $isWindowsPlatform = $true
+    }
+
+    if (-not $isWindowsPlatform) {
         Log-Error "This script is intended for Windows PowerShell. Use glm-claudecode.sh on macOS/Linux/WSL, or use bootstrap launcher."
         exit 1
     }
