@@ -85,13 +85,14 @@ require_fetch_tool() {
   exit 1
 }
 
-fetch_url_stdout() {
+download_url() {
   local url="$1"
+  local output_file="$2"
   if has_command curl; then
-    curl -fsSL "$url"
+    curl -fsSL "$url" -o "$output_file"
     return
   fi
-  wget -qO- "$url"
+  wget -qO "$output_file" "$url"
 }
 
 load_nvm() {
@@ -99,7 +100,11 @@ load_nvm() {
   if [[ ! -s "$NVM_DIR/nvm.sh" ]]; then
     require_fetch_tool
     log_info "Installing nvm (${NVM_INSTALL_VERSION})..."
-    fetch_url_stdout "https://raw.githubusercontent.com/nvm-sh/nvm/${NVM_INSTALL_VERSION}/install.sh" | bash
+    local nvm_installer
+    nvm_installer="$(mktemp -t nvm-install.XXXXXX.sh)"
+    download_url "https://raw.githubusercontent.com/nvm-sh/nvm/${NVM_INSTALL_VERSION}/install.sh" "$nvm_installer"
+    bash "$nvm_installer"
+    rm -f "$nvm_installer"
   fi
 
   # shellcheck source=/dev/null
@@ -132,17 +137,17 @@ check_nodejs() {
     node_version="$(node -v || true)"
     if [[ "$node_version" =~ ^v([0-9]+)\. ]]; then
       local major="${BASH_REMATCH[1]}"
-      if (( major == NODE_TARGET_VERSION )); then
-        log_success "Node.js already standardized: ${node_version}"
+      if (( major >= NODE_TARGET_VERSION )); then
+        log_success "Node.js version is compatible: ${node_version}"
         return
       fi
-      log_info "Detected Node.js ${node_version}. Standardizing to v${NODE_TARGET_VERSION}."
+      log_info "Detected Node.js ${node_version}. Upgrading to minimum v${NODE_TARGET_VERSION}."
       install_nodejs
       return
     fi
   fi
 
-  log_info "Node.js not found. Installing standardized version v${NODE_TARGET_VERSION}."
+  log_info "Node.js not found. Installing minimum required version v${NODE_TARGET_VERSION}."
   install_nodejs
 }
 

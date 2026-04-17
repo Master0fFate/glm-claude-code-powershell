@@ -47,7 +47,7 @@ curl -fsSL https://raw.githubusercontent.com/Master0fFate/glm-claude-code-powers
 
 ## What the scripts do
 
-- Standardize Node.js to **v22 (LTS target)**.
+- Enforce Node.js **v22+ (LTS baseline)**.
 - Install `@anthropic-ai/claude-code` globally via npm.
 - Require Z.AI API key input (`--api-key`, `-ApiKey`, or prompt).
 - Write `.claude/settings.json` with:
