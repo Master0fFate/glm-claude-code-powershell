@@ -82,6 +82,88 @@ function Invoke-WebRequestCompat {
     Invoke-WebRequest -Uri $Uri -OutFile $OutFile
 }
 
+function Resolve-NvmCommand {
+    $command = Get-Command nvm -ErrorAction SilentlyContinue
+    if ($command) {
+        return $command.Source
+    }
+
+    $candidatePaths = @()
+
+    foreach ($nvmHome in @(
+        $env:NVM_HOME,
+        [System.Environment]::GetEnvironmentVariable("NVM_HOME", "User"),
+        [System.Environment]::GetEnvironmentVariable("NVM_HOME", "Machine")
+    )) {
+        if (-not [string]::IsNullOrWhiteSpace($nvmHome)) {
+            $candidatePaths += (Join-Path $nvmHome "nvm.exe")
+        }
+    }
+
+    if (-not [string]::IsNullOrWhiteSpace($env:ProgramFiles)) {
+        $candidatePaths += (Join-Path (Join-Path $env:ProgramFiles "nvm") "nvm.exe")
+    }
+
+    if (-not [string]::IsNullOrWhiteSpace($env:LOCALAPPDATA)) {
+        $candidatePaths += (Join-Path (Join-Path $env:LOCALAPPDATA "nvm") "nvm.exe")
+    }
+
+    foreach ($path in $candidatePaths) {
+        if (Test-Path $path) {
+            return $path
+        }
+    }
+
+    return $null
+}
+
+function Normalize-PathEntry {
+    param([string]$Entry)
+
+    if ([string]::IsNullOrWhiteSpace($Entry)) {
+        return ""
+    }
+
+    $trimmed = $Entry.Trim()
+    if ($trimmed.EndsWith("\")) {
+        if ($trimmed -match '^[A-Za-z]:\\$') {
+            return $trimmed
+        }
+        if ($trimmed -match '^\\\\[^\\]+\\[^\\]+\\$') {
+            return $trimmed
+        }
+        return $trimmed.Substring(0, $trimmed.Length - 1)
+    }
+
+    return $trimmed
+}
+
+function Add-PathEntryIfMissing {
+    param([string]$Entry)
+
+    $normalizedEntry = Normalize-PathEntry -Entry $Entry
+    if ([string]::IsNullOrWhiteSpace($normalizedEntry)) {
+        return
+    }
+    $alreadyPresent = $false
+
+    foreach ($currentEntry in ($env:Path -split ';')) {
+        $normalizedCurrentEntry = Normalize-PathEntry -Entry $currentEntry
+        if ([string]::IsNullOrWhiteSpace($normalizedCurrentEntry)) {
+            continue
+        }
+
+        if ($normalizedCurrentEntry -ieq $normalizedEntry) {
+            $alreadyPresent = $true
+            break
+        }
+    }
+
+    if (-not $alreadyPresent) {
+        $env:Path = "$normalizedEntry;$env:Path"
+    }
+}
+
 # ========================
 #     Node.js Installation
 # ========================
@@ -104,19 +186,36 @@ function Install-NodeJS {
         exit 1
     }
 
-    $env:Path = [System.Environment]::GetEnvironmentVariable("Path", "Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path", "User")
+    $machinePath = [System.Environment]::GetEnvironmentVariable("Path", "Machine")
+    $userPath = [System.Environment]::GetEnvironmentVariable("Path", "User")
+    $env:Path = "$machinePath;$userPath"
 
     Start-Sleep -Seconds 3
 
+    $nvmHomeUser = [System.Environment]::GetEnvironmentVariable("NVM_HOME", "User")
+    $nvmSymlinkUser = [System.Environment]::GetEnvironmentVariable("NVM_SYMLINK", "User")
+    Add-PathEntryIfMissing -Entry $nvmHomeUser
+    Add-PathEntryIfMissing -Entry $nvmSymlinkUser
+
+    $nvmCommand = Resolve-NvmCommand
+    if (-not $nvmCommand) {
+        Log-Error "nvm-windows was installed but nvm.exe was not found on PATH or standard install locations."
+        exit 1
+    }
+
     Log-Info "Installing Node.js $NODE_TARGET_VERSION..."
     try {
-        & nvm install $NODE_TARGET_VERSION
-        & nvm use $NODE_TARGET_VERSION
+        & $nvmCommand install $NODE_TARGET_VERSION
+        & $nvmCommand use $NODE_TARGET_VERSION
 
-        $env:Path = [System.Environment]::GetEnvironmentVariable("Path", "Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path", "User")
+        $machinePath = [System.Environment]::GetEnvironmentVariable("Path", "Machine")
+        $userPath = [System.Environment]::GetEnvironmentVariable("Path", "User")
+        $env:Path = "$machinePath;$userPath"
     }
     catch {
-        Log-Error "Failed to install Node.js via nvm"
+        Log-Error "Failed to install Node.js $NODE_TARGET_VERSION via nvm."
+        Log-Error "Resolved nvm command path: $nvmCommand"
+        Log-Error $_.Exception.Message
         exit 1
     }
 
