@@ -1,12 +1,15 @@
-﻿# A powershell version of the installation script for claude-code by Master0fFate
+# A PowerShell installation script for Claude Code by Master0fFate
+
+param(
+    [string]$ApiKey
+)
 
 # ========================
 #       Constants
 # ========================
 $ErrorActionPreference = "Stop"
 $SCRIPT_NAME = $MyInvocation.MyCommand.Name
-$NODE_MIN_VERSION = 18
-$NODE_INSTALL_VERSION = 22
+$NODE_TARGET_VERSION = 22
 $NVM_WINDOWS_VERSION = "1.1.12"
 $CLAUDE_PACKAGE = "@anthropic-ai/claude-code"
 $CONFIG_DIR = Join-Path $env:USERPROFILE ".claude"
@@ -51,13 +54,13 @@ function Ensure-DirExists {
 # ========================
 
 function Install-NodeJS {
-    Log-Info "Installing Node.js on Windows..."
+    Log-Info "Installing standardized Node.js v$NODE_TARGET_VERSION on Windows..."
 
     Log-Info "Installing nvm-windows ($NVM_WINDOWS_VERSION)..."
-    
+
     $nvmUrl = "https://github.com/coreybutler/nvm-windows/releases/download/$NVM_WINDOWS_VERSION/nvm-setup.exe"
     $nvmInstaller = Join-Path $env:TEMP "nvm-setup.exe"
-    
+
     try {
         Invoke-WebRequest -Uri $nvmUrl -OutFile $nvmInstaller -UseBasicParsing
         Start-Process -FilePath $nvmInstaller -Args "/SILENT" -Wait
@@ -69,14 +72,14 @@ function Install-NodeJS {
     }
 
     $env:Path = [System.Environment]::GetEnvironmentVariable("Path", "Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path", "User")
-    
+
     Start-Sleep -Seconds 3
 
-    Log-Info "Installing Node.js $NODE_INSTALL_VERSION..."
+    Log-Info "Installing Node.js $NODE_TARGET_VERSION..."
     try {
-        & nvm install $NODE_INSTALL_VERSION
-        & nvm use $NODE_INSTALL_VERSION
-        
+        & nvm install $NODE_TARGET_VERSION
+        & nvm use $NODE_TARGET_VERSION
+
         $env:Path = [System.Environment]::GetEnvironmentVariable("Path", "Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path", "User")
     }
     catch {
@@ -84,12 +87,11 @@ function Install-NodeJS {
         exit 1
     }
 
-    # Verify installation
     Start-Sleep -Seconds 2
     try {
         $nodeVersion = & node -v
         $npmVersion = & npm -v
-        Log-Success "Node.js installed: $nodeVersion"
+        Log-Success "Node.js active version: $nodeVersion"
         Log-Success "npm version: $npmVersion"
     }
     catch {
@@ -105,23 +107,28 @@ function Install-NodeJS {
 function Check-NodeJS {
     try {
         $nodeVersion = & node -v 2>$null
-        if ($nodeVersion) {
-            $version = $nodeVersion -replace 'v', ''
-            $majorVersion = [int]($version.Split('.')[0])
-            
-            if ($majorVersion -ge $NODE_MIN_VERSION) {
-                Log-Success "Node.js is already installed: $nodeVersion"
-                return
-            }
-            else {
-                Log-Info "Node.js $nodeVersion is installed but version < $NODE_MIN_VERSION. Upgrading..."
-                Install-NodeJS
-            }
+        if (-not $nodeVersion) {
+            Log-Info "Node.js not found. Installing standardized version v$NODE_TARGET_VERSION..."
+            Install-NodeJS
+            return
         }
+
+        $version = $nodeVersion -replace 'v', ''
+        $majorVersion = [int]($version.Split('.')[0])
+
+        if ($majorVersion -eq $NODE_TARGET_VERSION) {
+            Log-Success "Node.js already standardized: $nodeVersion"
+            return
+        }
+
+        Log-Info "Detected Node.js $nodeVersion. Standardizing to v$NODE_TARGET_VERSION..."
+        Install-NodeJS
+        return
     }
     catch {
-        Log-Info "Node.js not found. Installing..."
+        Log-Info "Node.js not found. Installing standardized version v$NODE_TARGET_VERSION..."
         Install-NodeJS
+        return
     }
 }
 
@@ -129,7 +136,21 @@ function Check-NodeJS {
 #     Claude Code Installation
 # ========================
 
+function Ensure-ClaudePath {
+    $appData = [System.Environment]::GetEnvironmentVariable("APPDATA")
+    if (-not [string]::IsNullOrWhiteSpace($appData)) {
+        $npmGlobal = Join-Path $appData "npm"
+        if (Test-Path $npmGlobal) {
+            if (-not (($env:Path -split ';') -contains $npmGlobal)) {
+                $env:Path = "$npmGlobal;$env:Path"
+            }
+        }
+    }
+}
+
 function Install-ClaudeCode {
+    Ensure-ClaudePath
+
     try {
         $claudeVersion = & claude --version 2>$null
         if ($claudeVersion) {
@@ -144,7 +165,16 @@ function Install-ClaudeCode {
     Log-Info "Installing Claude Code..."
     try {
         & npm install -g $CLAUDE_PACKAGE
-        Log-Success "Claude Code installed successfully"
+        Ensure-ClaudePath
+
+        $claudeVersion = & claude --version 2>$null
+        if (-not $claudeVersion) {
+            Log-Error "Claude Code installed but command was not found on PATH."
+            Log-Error "Try restarting your terminal, then run: claude --version"
+            exit 1
+        }
+
+        Log-Success "Claude Code installed successfully: $claudeVersion"
     }
     catch {
         Log-Error "Failed to install claude-code"
@@ -160,40 +190,18 @@ const path = require("path");
 
 const homeDir = os.homedir();
 const filePath = path.join(homeDir, ".claude.json");
+
+let content = {};
 if (fs.existsSync(filePath)) {
-    const content = JSON.parse(fs.readFileSync(filePath, "utf-8"));
-    fs.writeFileSync(filePath, JSON.stringify({ ...content, hasCompletedOnboarding: true }, null, 2), "utf-8");
-} else {
-    fs.writeFileSync(filePath, JSON.stringify({ hasCompletedOnboarding: true }, null, 2), "utf-8");
-}
-'@
-
-    try {
-        $script | & node --eval $script
-    }
-    catch {
-        Log-Error "Failed to configure .claude.json"
-    }
+  try {
+    content = JSON.parse(fs.readFileSync(filePath, "utf-8"));
+  } catch (_) {
+    content = {};
+  }
 }
 
-# ========================
-#     API Key Configuration
-# ========================
-
-function Configure-ClaudeJson {
-    $script = @'
-const os = require("os");
-const fs = require("fs");
-const path = require("path");
-
-const homeDir = os.homedir();
-const filePath = path.join(homeDir, ".claude.json");
-if (fs.existsSync(filePath)) {
-    const content = JSON.parse(fs.readFileSync(filePath, "utf-8"));
-    fs.writeFileSync(filePath, JSON.stringify({ ...content, hasCompletedOnboarding: true }, null, 2), "utf-8");
-} else {
-    fs.writeFileSync(filePath, JSON.stringify({ hasCompletedOnboarding: true }, null, 2), "utf-8");
-}
+content.hasCompletedOnboarding = true;
+fs.writeFileSync(filePath, JSON.stringify(content, null, 2), "utf-8");
 '@
 
     try {
@@ -208,17 +216,39 @@ if (fs.existsSync(filePath)) {
 #     API Key Configuration
 # ========================
 
-function Configure-Claude {
-    Log-Info "Configuring Claude Code..."
+function Resolve-ApiKey {
+    param([string]$InlineApiKey)
+
+    if (-not [string]::IsNullOrWhiteSpace($InlineApiKey)) {
+        return $InlineApiKey
+    }
+
+    if (-not [string]::IsNullOrWhiteSpace($env:ZAI_API_KEY)) {
+        return $env:ZAI_API_KEY
+    }
+
+    if (-not [string]::IsNullOrWhiteSpace($env:ANTHROPIC_AUTH_TOKEN)) {
+        return $env:ANTHROPIC_AUTH_TOKEN
+    }
+
     Write-Host "   You can get your API key from: $API_KEY_URL"
-    
-    $apiKey = Read-Host "🔑 Please enter your Z.AI API key" -AsSecureString
+    $apiKeySecure = Read-Host "🔑 Please enter your Z.AI API key" -AsSecureString
     $apiKeyPlain = [Runtime.InteropServices.Marshal]::PtrToStringAuto(
-        [Runtime.InteropServices.Marshal]::SecureStringToBSTR($apiKey)
+        [Runtime.InteropServices.Marshal]::SecureStringToBSTR($apiKeySecure)
     )
 
+    return $apiKeyPlain
+}
+
+function Configure-Claude {
+    param([string]$InlineApiKey)
+
+    Log-Info "Configuring Claude Code..."
+
+    $apiKeyPlain = Resolve-ApiKey -InlineApiKey $InlineApiKey
+
     if ([string]::IsNullOrWhiteSpace($apiKeyPlain)) {
-        Log-Error "API key cannot be empty. Please run the script again."
+        Log-Error "API key is required and cannot be empty."
         exit 1
     }
 
@@ -235,7 +265,6 @@ const homeDir = os.homedir();
 const configDir = path.join(homeDir, '.claude');
 const filePath = path.join(configDir, 'settings.json');
 
-// Ensure directory exists
 if (!fs.existsSync(configDir)) {
     fs.mkdirSync(configDir, { recursive: true });
 }
@@ -243,24 +272,21 @@ if (!fs.existsSync(configDir)) {
 let content = {};
 if (fs.existsSync(filePath)) {
     try {
-        const fileContent = fs.readFileSync(filePath, 'utf-8');
-        if (fileContent.trim()) {
-            content = JSON.parse(fileContent);
+        const raw = fs.readFileSync(filePath, 'utf-8');
+        if (raw.trim()) {
+            content = JSON.parse(raw);
         }
-    } catch (e) {
-        console.log('Creating new settings file...');
+    } catch (_) {
+        content = {};
     }
 }
 
-const newContent = {
-    ...content,
-    env: {
-        ANTHROPIC_AUTH_TOKEN: "$apiKeyEscaped",
-        ANTHROPIC_BASE_URL: "$apiBaseUrlEscaped",
-        API_TIMEOUT_MS: "$API_TIMEOUT_MS"
-    }
-};
+const env = { ...(content.env || {}) };
+env.ANTHROPIC_AUTH_TOKEN = "$apiKeyEscaped";
+env.ANTHROPIC_BASE_URL = "$apiBaseUrlEscaped";
+env.API_TIMEOUT_MS = "$API_TIMEOUT_MS";
 
+const newContent = { ...content, env };
 fs.writeFileSync(filePath, JSON.stringify(newContent, null, 2), 'utf-8');
 console.log('Configuration written successfully');
 "@
@@ -281,12 +307,28 @@ console.log('Configuration written successfully');
 # ========================
 
 function Main {
+    $isWindowsPlatform = $false
+    if (Get-Variable -Name IsWindows -ErrorAction SilentlyContinue) {
+        $isWindowsPlatform = [bool]$IsWindows
+    }
+    elseif ($PSVersionTable.PSEdition -eq "Desktop") {
+        $isWindowsPlatform = $true
+    }
+    elseif ($env:OS -eq "Windows_NT") {
+        $isWindowsPlatform = $true
+    }
+
+    if (-not $isWindowsPlatform) {
+        Log-Error "This script is intended for Windows PowerShell. Use glm-claudecode.sh on macOS/Linux/WSL, or use bootstrap launcher."
+        exit 1
+    }
+
     Write-Host "🚀 Starting $SCRIPT_NAME"
 
     Check-NodeJS
     Install-ClaudeCode
     Configure-ClaudeJson
-    Configure-Claude
+    Configure-Claude -InlineApiKey $ApiKey
 
     Write-Host ""
     Log-Success "🎉 Installation completed successfully!"
