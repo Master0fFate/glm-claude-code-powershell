@@ -55,6 +55,18 @@ function Get-ScriptRoot {
 
 $ScriptRoot = Get-ScriptRoot
 
+function Test-IsWindowsPlatform {
+    if (Get-Variable -Name IsWindows -ErrorAction SilentlyContinue) {
+        return [bool]$IsWindows
+    }
+
+    if ($PSVersionTable.PSEdition -eq "Desktop") {
+        return $true
+    }
+
+    return ($env:OS -eq "Windows_NT")
+}
+
 function Invoke-LocalOrRemotePs1 {
     param([string]$InlineApiKey)
 
@@ -67,8 +79,13 @@ function Invoke-LocalOrRemotePs1 {
     }
 
     $tempFile = Join-Path (Get-TempDirectory) "glm-claudecode.ps1"
-    Invoke-WebRequestCompat -Uri "$RawBase/glm-claudecode.ps1" -OutFile $tempFile
-    & $tempFile -ApiKey $InlineApiKey
+    try {
+        Invoke-WebRequestCompat -Uri "$RawBase/glm-claudecode.ps1" -OutFile $tempFile
+        & $tempFile -ApiKey $InlineApiKey
+    }
+    finally {
+        Remove-Item $tempFile -ErrorAction SilentlyContinue
+    }
 }
 
 function Invoke-LocalOrRemoteSh {
@@ -112,7 +129,7 @@ function Invoke-LocalOrRemoteSh {
     }
 }
 
-if ($IsWindows) {
+if (Test-IsWindowsPlatform) {
     Invoke-LocalOrRemotePs1 -InlineApiKey $ApiKey
 }
 else {

@@ -164,6 +164,74 @@ function Add-PathEntryIfMissing {
     }
 }
 
+function Get-NvmSettingValue {
+    param(
+        [Parameter(Mandatory = $true)][string]$SettingsFile,
+        [Parameter(Mandatory = $true)][string]$Name
+    )
+
+    if (-not (Test-Path $SettingsFile)) {
+        return $null
+    }
+
+    $prefix = "${Name}:"
+    foreach ($line in (Get-Content -Path $SettingsFile -ErrorAction SilentlyContinue)) {
+        if ($line.StartsWith($prefix, [System.StringComparison]::OrdinalIgnoreCase)) {
+            return $line.Substring($prefix.Length).Trim()
+        }
+    }
+
+    return $null
+}
+
+function Initialize-NvmEnvironment {
+    param([string]$NvmCommandPath)
+
+    $nvmHome = [System.Environment]::GetEnvironmentVariable("NVM_HOME", "Process")
+    if ([string]::IsNullOrWhiteSpace($nvmHome)) {
+        $nvmHome = [System.Environment]::GetEnvironmentVariable("NVM_HOME", "User")
+    }
+    if ([string]::IsNullOrWhiteSpace($nvmHome)) {
+        $nvmHome = [System.Environment]::GetEnvironmentVariable("NVM_HOME", "Machine")
+    }
+    if ([string]::IsNullOrWhiteSpace($nvmHome) -and -not [string]::IsNullOrWhiteSpace($NvmCommandPath)) {
+        $nvmHome = Split-Path -Parent $NvmCommandPath
+    }
+
+    if (-not [string]::IsNullOrWhiteSpace($nvmHome)) {
+        $env:NVM_HOME = $nvmHome
+        Add-PathEntryIfMissing -Entry $nvmHome
+    }
+
+    $nvmSymlink = [System.Environment]::GetEnvironmentVariable("NVM_SYMLINK", "Process")
+    if ([string]::IsNullOrWhiteSpace($nvmSymlink)) {
+        $nvmSymlink = [System.Environment]::GetEnvironmentVariable("NVM_SYMLINK", "User")
+    }
+    if ([string]::IsNullOrWhiteSpace($nvmSymlink)) {
+        $nvmSymlink = [System.Environment]::GetEnvironmentVariable("NVM_SYMLINK", "Machine")
+    }
+
+    if ([string]::IsNullOrWhiteSpace($nvmSymlink) -and -not [string]::IsNullOrWhiteSpace($nvmHome)) {
+        $settingsFile = Join-Path $nvmHome "settings.txt"
+        $settingsSymlink = Get-NvmSettingValue -SettingsFile $settingsFile -Name "path"
+        if (-not [string]::IsNullOrWhiteSpace($settingsSymlink)) {
+            $nvmSymlink = $settingsSymlink
+        }
+    }
+
+    if ([string]::IsNullOrWhiteSpace($nvmSymlink) -and -not [string]::IsNullOrWhiteSpace($env:ProgramFiles)) {
+        $defaultSymlink = Join-Path $env:ProgramFiles "nodejs"
+        if (Test-Path $defaultSymlink) {
+            $nvmSymlink = $defaultSymlink
+        }
+    }
+
+    if (-not [string]::IsNullOrWhiteSpace($nvmSymlink)) {
+        $env:NVM_SYMLINK = $nvmSymlink
+        Add-PathEntryIfMissing -Entry $nvmSymlink
+    }
+}
+
 # ========================
 #     Node.js Installation
 # ========================
@@ -203,6 +271,8 @@ function Install-NodeJS {
         exit 1
     }
 
+    Initialize-NvmEnvironment -NvmCommandPath $nvmCommand
+
     Log-Info "Installing Node.js $NODE_TARGET_VERSION..."
     try {
         & $nvmCommand install $NODE_TARGET_VERSION
@@ -211,6 +281,7 @@ function Install-NodeJS {
         $machinePath = [System.Environment]::GetEnvironmentVariable("Path", "Machine")
         $userPath = [System.Environment]::GetEnvironmentVariable("Path", "User")
         $env:Path = "$machinePath;$userPath"
+        Initialize-NvmEnvironment -NvmCommandPath $nvmCommand
     }
     catch {
         Log-Error "Failed to install Node.js $NODE_TARGET_VERSION via nvm."
@@ -248,12 +319,12 @@ function Check-NodeJS {
         $version = $nodeVersion -replace 'v', ''
         $majorVersion = [int]($version.Split('.')[0])
 
-        if ($majorVersion -eq $NODE_TARGET_VERSION) {
-            Log-Success "Node.js already standardized: $nodeVersion"
+        if ($majorVersion -ge $NODE_TARGET_VERSION) {
+            Log-Success "Node.js version is compatible: $nodeVersion"
             return
         }
 
-        Log-Info "Detected Node.js $nodeVersion. Standardizing to v$NODE_TARGET_VERSION..."
+        Log-Info "Detected Node.js $nodeVersion. Upgrading to minimum v$NODE_TARGET_VERSION..."
         Install-NodeJS
         return
     }
