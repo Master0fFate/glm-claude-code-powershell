@@ -124,7 +124,12 @@ function Normalize-PathEntry {
         return ""
     }
 
-    return $Entry.Trim().TrimEnd('\')
+    $trimmed = $Entry.Trim()
+    if ($trimmed.Length -gt 3 -and $trimmed.EndsWith("\")) {
+        return $trimmed.Substring(0, $trimmed.Length - 1)
+    }
+
+    return $trimmed
 }
 
 function Add-PathEntryIfMissing {
@@ -202,7 +207,7 @@ function Install-NodeJS {
         $env:Path = "$machinePath;$userPath"
     }
     catch {
-        Log-Error "Failed to install Node.js via nvm"
+        Log-Error "Failed to install Node.js $NODE_TARGET_VERSION via nvm command: $nvmCommand"
         Log-Error $_.Exception.Message
         exit 1
     }
