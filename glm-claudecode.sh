@@ -199,25 +199,21 @@ NODE
 }
 
 resolve_api_key() {
+  local resolved_api_key=""
+
   if [[ -n "${API_KEY_INPUT:-}" ]]; then
-    printf '%s' "$API_KEY_INPUT"
-    return
+    resolved_api_key="$API_KEY_INPUT"
+  elif [[ -n "${ZAI_API_KEY:-}" ]]; then
+    resolved_api_key="$ZAI_API_KEY"
+  elif [[ -n "${ANTHROPIC_AUTH_TOKEN:-}" ]]; then
+    resolved_api_key="$ANTHROPIC_AUTH_TOKEN"
+  else
+    printf '   You can get your API key from: %s\n' "$API_KEY_URL"
+    read -r -s -p "🔑 Please enter your Z.AI API key: " resolved_api_key
+    printf '\n'
   fi
 
-  if [[ -n "${ZAI_API_KEY:-}" ]]; then
-    printf '%s' "$ZAI_API_KEY"
-    return
-  fi
-
-  if [[ -n "${ANTHROPIC_AUTH_TOKEN:-}" ]]; then
-    printf '%s' "$ANTHROPIC_AUTH_TOKEN"
-    return
-  fi
-
-  printf '   You can get your API key from: %s\n' "$API_KEY_URL"
-  read -r -s -p "🔑 Please enter your Z.AI API key: " api_key
-  printf '\n'
-  printf '%s' "$api_key"
+  printf '%s' "$resolved_api_key"
 }
 
 configure_claude() {

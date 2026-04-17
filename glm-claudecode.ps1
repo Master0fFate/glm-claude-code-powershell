@@ -107,28 +107,29 @@ function Install-NodeJS {
 function Check-NodeJS {
     try {
         $nodeVersion = & node -v 2>$null
-        if ($nodeVersion) {
-            $version = $nodeVersion -replace 'v', ''
-            $majorVersion = [int]($version.Split('.')[0])
-
-            if ($majorVersion -eq $NODE_TARGET_VERSION) {
-                Log-Success "Node.js already standardized: $nodeVersion"
-                return
-            }
-
-            Log-Info "Detected Node.js $nodeVersion. Standardizing to v$NODE_TARGET_VERSION..."
+        if (-not $nodeVersion) {
+            Log-Info "Node.js not found. Installing standardized version v$NODE_TARGET_VERSION..."
             Install-NodeJS
             return
         }
+
+        $version = $nodeVersion -replace 'v', ''
+        $majorVersion = [int]($version.Split('.')[0])
+
+        if ($majorVersion -eq $NODE_TARGET_VERSION) {
+            Log-Success "Node.js already standardized: $nodeVersion"
+            return
+        }
+
+        Log-Info "Detected Node.js $nodeVersion. Standardizing to v$NODE_TARGET_VERSION..."
+        Install-NodeJS
+        return
     }
     catch {
         Log-Info "Node.js not found. Installing standardized version v$NODE_TARGET_VERSION..."
         Install-NodeJS
         return
     }
-
-    Log-Info "Node.js not found. Installing standardized version v$NODE_TARGET_VERSION..."
-    Install-NodeJS
 }
 
 # ========================
