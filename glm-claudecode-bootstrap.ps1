@@ -38,15 +38,22 @@ function Invoke-LocalOrRemoteSh {
         return
     }
 
-    if ([string]::IsNullOrWhiteSpace($InlineApiKey)) {
-        $cmd = "curl -fsSL $RawBase/glm-claudecode.sh | bash"
-    }
-    else {
-        $escaped = $InlineApiKey.Replace("'", "'\''")
-        $cmd = "curl -fsSL $RawBase/glm-claudecode.sh | bash -s -- --api-key '$escaped'"
-    }
+    $previousApiKey = $env:ZAI_API_KEY
+    try {
+        if (-not [string]::IsNullOrWhiteSpace($InlineApiKey)) {
+            $env:ZAI_API_KEY = $InlineApiKey
+        }
 
-    & bash -lc $cmd
+        & bash -lc "curl -fsSL $RawBase/glm-claudecode.sh | bash"
+    }
+    finally {
+        if ($null -eq $previousApiKey) {
+            Remove-Item Env:ZAI_API_KEY -ErrorAction SilentlyContinue
+        }
+        else {
+            $env:ZAI_API_KEY = $previousApiKey
+        }
+    }
 }
 
 if ($IsWindows) {

@@ -28,7 +28,8 @@ download_url() {
 
 run_local_or_remote_sh() {
   if [[ -f "$SCRIPT_DIR/glm-claudecode.sh" ]]; then
-    exec bash "$SCRIPT_DIR/glm-claudecode.sh" "$@"
+    bash "$SCRIPT_DIR/glm-claudecode.sh" "$@"
+    return $?
   fi
 
   local tmp_sh
@@ -50,7 +51,8 @@ run_local_or_remote_ps1() {
   fi
 
   if [[ -f "$SCRIPT_DIR/glm-claudecode.ps1" ]]; then
-    exec "$ps_cmd" -NoProfile -ExecutionPolicy Bypass -File "$SCRIPT_DIR/glm-claudecode.ps1" "$@"
+    "$ps_cmd" -NoProfile -ExecutionPolicy Bypass -File "$SCRIPT_DIR/glm-claudecode.ps1" "$@"
+    return $?
   fi
 
   local tmp_ps1

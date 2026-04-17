@@ -107,6 +107,11 @@ load_nvm() {
     rm -f "$nvm_installer"
   fi
 
+  if [[ ! -s "$NVM_DIR/nvm.sh" ]]; then
+    log_error "nvm installation did not produce $NVM_DIR/nvm.sh"
+    exit 1
+  fi
+
   # shellcheck source=/dev/null
   . "$NVM_DIR/nvm.sh"
 
